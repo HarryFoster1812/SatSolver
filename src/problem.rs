@@ -1,4 +1,7 @@
-use std::io::{self, BufRead};
+use std::{
+    collections::HashMap,
+    io::{self, BufRead},
+};
 
 /// A SAT problem: number of variables/clauses and the clauses themselves.
 
@@ -96,6 +99,7 @@ fn parse_problem_header(line: &str, problem: &mut Problem) -> io::Result<()> {
 /// Returns Ok(None) if the line had nothing but "0".
 fn parse_clause_line(line: &str) -> io::Result<Option<Clause>> {
     let mut lits: Vec<Literal> = Vec::new();
+    let mut lits_seen: HashMap<u32, bool> = HashMap::new();
 
     for tok in line.split_whitespace() {
         let mut lit = tok.parse::<i32>().map_err(|e| {
@@ -104,6 +108,7 @@ fn parse_clause_line(line: &str) -> io::Result<Option<Clause>> {
                 format!("Invalid literal `{tok}`: {e}"),
             )
         })?;
+
         if lit == 0 {
             // End of this clause
             return Ok(if lits.is_empty() {
@@ -114,15 +119,19 @@ fn parse_clause_line(line: &str) -> io::Result<Option<Clause>> {
                 })
             });
         } else {
-            if lit < 0 {
+            let lit_id: u32 = lit.wrapping_neg() as u32;
+            let is_positive: bool = lit > 0;
+            if lits_seen.contains_key(&lit_id) {
+                // check is the lit seen is the opposite of what was previously seen
+                if *lits_seen.get(&lit_id).unwrap() != is_positive {
+                    // the clause is a tautology
+                    return Ok(None);
+                } else {
+                    lits_seen.insert(lit_id, lit > 0);
+                }
                 lits.push(Literal {
-                    var: VariableId(lit.wrapping_neg() as u32),
-                    positive: false,
-                });
-            } else {
-                lits.push(Literal {
-                    var: VariableId(lit as u32),
-                    positive: true,
+                    var: VariableId(lit_id),
+                    positive: lit > 0,
                 });
             }
         }
@@ -134,4 +143,4 @@ fn parse_clause_line(line: &str) -> io::Result<Option<Clause>> {
     ))
 }
 
-// Maybe do unit propagation when parsing (maintain a list of units parsed)
+// TODO: add tautology elim at parse time
