@@ -27,7 +27,7 @@ fn main() -> io::Result<()> {
 
     solver_state.values.fill(Truth::Undef);
 
-    let solver_result: SATResult = DPLL(&problem, &solver_state);
+    let solver_result: SATResult = DPLL(&problem, &mut solver_state, 0);
 
     print!("{}", solver_result.to_string());
 
