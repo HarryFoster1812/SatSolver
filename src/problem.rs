@@ -126,14 +126,15 @@ fn parse_clause_line(line: &str) -> io::Result<Option<Clause>> {
                 if *lits_seen.get(&lit_id).unwrap() != is_positive {
                     // the clause is a tautology
                     return Ok(None);
-                } else {
-                    lits_seen.insert(lit_id, lit > 0);
                 }
-                lits.push(Literal {
-                    var: VariableId(lit_id),
-                    positive: lit > 0,
-                });
+            } else {
+                lits_seen.insert(lit_id, lit > 0);
             }
+
+            lits.push(Literal {
+                var: VariableId(lit_id),
+                positive: lit > 0,
+            });
         }
     }
     // If there's no trailing 0 on the line invalid DIMACS
