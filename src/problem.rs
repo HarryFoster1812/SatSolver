@@ -33,7 +33,11 @@ pub struct Problem {
 }
 
 /// Parse DIMACS CNF from stdin into problem.
-pub fn parse_stdin(problem: &mut Problem) -> io::Result<()> {
+pub fn parse_stdin() -> io::Result<Problem> {
+    let mut problem = Problem {
+        num_variables: 0,
+        clauses: vec![],
+    };
     let stdin = io::stdin();
     for line_res in stdin.lock().lines() {
         let line = line_res?;
@@ -43,7 +47,7 @@ pub fn parse_stdin(problem: &mut Problem) -> io::Result<()> {
             // comment or blank line
             continue;
         } else if trimmed.starts_with('p') {
-            parse_problem_header(trimmed, problem)?;
+            parse_problem_header(trimmed, &mut problem)?;
         } else {
             // clause line: sequence of ints ending with 0
             if let Some(clause) = parse_clause_line(trimmed)? {
@@ -51,7 +55,7 @@ pub fn parse_stdin(problem: &mut Problem) -> io::Result<()> {
             }
         }
     }
-    Ok(())
+    Ok(problem)
 }
 
 /// Parse "p cnf <num_variables> <num_clauses>"
