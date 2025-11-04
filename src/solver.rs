@@ -117,6 +117,11 @@ fn find_units(
         }
         if clauses[i].lits.len() == 1 {
             let literal = clauses[i].lits[0];
+            println!(
+                "FOUNT UNIT: {}, is positive: {}",
+                literal.var.0, literal.positive
+            );
+            println!("Len values: {}", solver_state.values.len());
             let truth_value = solver_state.values.get_mut(literal.var.0 as usize).unwrap();
             *truth_value = if literal.positive {
                 solver_state.trail.push(Literal {

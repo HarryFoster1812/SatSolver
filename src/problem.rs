@@ -119,7 +119,7 @@ fn parse_clause_line(line: &str) -> io::Result<Option<Clause>> {
                 })
             });
         } else {
-            let lit_id: u32 = lit.wrapping_neg() as u32;
+            let lit_id: u32 = lit.wrapping_abs() as u32;
             let is_positive: bool = lit > 0;
             if lits_seen.contains_key(&lit_id) {
                 // check is the lit seen is the opposite of what was previously seen
