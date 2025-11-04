@@ -38,9 +38,25 @@ pub struct SolverState {
     pub satisfied_clauses: Vec<Vec<usize>>, // satisfied_clause_indices
 }
 
-pub fn DPLL(problem: &Problem, solver_state: &mut SolverState, level: u32) -> SATResult {
+pub fn solve(problem: &Problem, solver_state: &mut SolverState) -> SolverResult {
+    return match DPLL(problem, solver_state, 0) {
+        true => SolverResult {
+            status: SATResult::SATISFIABLE,
+            model: Vec::new(),
+        },
+        false => SolverResult {
+            status: SATResult::UNSATISFIABLE,
+            model: Vec::new(),
+        },
+    };
+}
+
+pub fn DPLL(problem: &Problem, solver_state: &mut SolverState, level: u32) -> bool {
     solver_state.trail_lim.push(solver_state.prop_head);
-    unit_propagation(&problem.clauses, solver_state, level);
+    if !unit_propagation(&problem.clauses, solver_state, level) {
+        // there was a contradiction so we return false
+        return false;
+    }
 
     pure_literal_elimination(&problem.clauses, solver_state, level);
 
@@ -53,10 +69,10 @@ pub fn DPLL(problem: &Problem, solver_state: &mut SolverState, level: u32) -> SA
     // l ← choose-literal(Φ);
     // return DPLL(Φ ∧ {l}) or DPLL(Φ ∧ {¬l});
 
-    return SATResult::SATISFIABLE;
+    return true;
 }
 
-fn unit_propagation(clauses: &Vec<Clause>, mut solver_state: &mut SolverState, level: u32) {
+fn unit_propagation(clauses: &Vec<Clause>, mut solver_state: &mut SolverState, level: u32) -> bool {
     let mut sat_clauses: Vec<usize>;
 
     if level > 0 {
@@ -96,6 +112,7 @@ fn unit_propagation(clauses: &Vec<Clause>, mut solver_state: &mut SolverState, l
                         }
                     } else {
                         // there is a contradiction
+                        return false;
                     }
                 }
             }
@@ -103,6 +120,8 @@ fn unit_propagation(clauses: &Vec<Clause>, mut solver_state: &mut SolverState, l
 
         find_units(&mut sat_clauses, clauses, solver_state);
     }
+    solver_state.satisfied_clauses.push(sat_clauses);
+    return true;
 }
 
 fn find_units(
@@ -122,7 +141,10 @@ fn find_units(
                 literal.var.0, literal.positive
             );
             println!("Len values: {}", solver_state.values.len());
-            let truth_value = solver_state.values.get_mut(literal.var.0 as usize).unwrap();
+            let truth_value = solver_state
+                .values
+                .get_mut((literal.var.0 - 1) as usize)
+                .unwrap();
             *truth_value = if literal.positive {
                 solver_state.trail.push(Literal {
                     var: literal.var,
@@ -144,7 +166,7 @@ fn find_units(
 fn pure_literal_elimination(clauses: &Vec<Clause>, solver_state: &mut SolverState, level: u32) {
     let sat_clauses = solver_state
         .satisfied_clauses
-        .get_mut((level - 1) as usize)
+        .get_mut((level) as usize)
         .unwrap();
 
     let mut pure_lits: HashMap<u32, (bool, bool)> = HashMap::new(); // (is_pure,first_seen_positive)

@@ -21,9 +21,9 @@ fn main() -> io::Result<()> {
         for j in 0..clause.lits.len() {
             let lit = clause.lits.get(j).unwrap();
             if lit.positive {
-                print!("{}", lit.var.0);
+                print!("{} ", lit.var.0);
             } else {
-                print!("~{}", lit.var.0);
+                print!("~{} ", lit.var.0);
             }
         }
         println!();
@@ -38,9 +38,9 @@ fn main() -> io::Result<()> {
         satisfied_clauses: Vec::new(),
     };
 
-    let solver_result: SATResult = DPLL(&PROBLEM, &mut solver_state, 0);
+    let solver_result: SolverResult = solve(&PROBLEM, &mut solver_state);
 
-    print!("{}", solver_result.to_string());
+    println!("{}", solver_result.status.to_string());
 
     Ok(())
 }
