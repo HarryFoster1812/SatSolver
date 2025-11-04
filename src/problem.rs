@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     io::{self, BufRead},
+    ops::Sub,
 };
 
 /// A SAT problem: number of variables/clauses and the clauses themselves.
@@ -129,7 +130,7 @@ fn parse_clause_line(line: &str) -> io::Result<Option<Clause>> {
                 })
             });
         } else {
-            let lit_id: u32 = lit.wrapping_abs() as u32;
+            let lit_id: u32 = lit.wrapping_abs().sub(1) as u32;
             let is_positive: bool = lit > 0;
             if lits_seen.contains_key(&lit_id) {
                 // check is the lit seen is the opposite of what was previously seen

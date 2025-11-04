@@ -58,6 +58,7 @@ pub fn DPLL(problem: &Problem, solver_state: &mut SolverState, level: u32) -> bo
         return false;
     }
 
+    ensure_level_slot(solver_state, level as usize);
     pure_literal_elimination(&problem.clauses, solver_state, level);
 
     if solver_state
@@ -72,14 +73,14 @@ pub fn DPLL(problem: &Problem, solver_state: &mut SolverState, level: u32) -> bo
 
     let l = choose_literal(&problem.clauses, solver_state, level as usize).unwrap();
 
-    *solver_state.values.get_mut((l.var.0 - 1) as usize).unwrap() = Truth::True;
+    *solver_state.values.get_mut((l.var.0) as usize).unwrap() = Truth::True;
     solver_state.trail.push(l);
 
     return if DPLL(problem, solver_state, level + 1) {
         true
     } else {
         undo_solve(solver_state, level + 1);
-        *solver_state.values.get_mut((l.var.0 - 1) as usize).unwrap() = Truth::False;
+        *solver_state.values.get_mut((l.var.0) as usize).unwrap() = Truth::False;
 
         solver_state.trail.push(Literal {
             var: l.var,
@@ -89,104 +90,181 @@ pub fn DPLL(problem: &Problem, solver_state: &mut SolverState, level: u32) -> bo
     };
 }
 
-fn unit_propagation(clauses: &Vec<Clause>, mut solver_state: &mut SolverState, level: u32) -> bool {
-    let mut sat_clauses: Vec<usize>;
-
+fn unit_propagation(clauses: &Vec<Clause>, solver_state: &mut SolverState, level: u32) -> bool {
+    // Build a 'satisfied' bitmap for convenience
+    let mut is_sat = vec![false; clauses.len()];
     if level > 0 {
-        if let Some(level_clauses) = solver_state.satisfied_clauses.get((level - 1) as usize) {
-            sat_clauses = level_clauses.clone(); // Make a copy of the clauses at that decision level
-        } else {
-            sat_clauses = vec![]; // No clauses at this level
-        }
-    } else {
-        sat_clauses = vec![]; // No clauses if level is 0
-    }
-    find_units(&mut sat_clauses, clauses, solver_state);
-    while solver_state.prop_head < solver_state.trail.len() {
-        // now the literals have been found we need to propagate them
-        // for each unpropagated literal
-        println!("Prop Head: {}", solver_state.prop_head);
-        for trail_idx in solver_state.prop_head..solver_state.trail.len() {
-            // for each clause
-
-            let unit_idx = solver_state.trail.get(trail_idx).unwrap().var.0;
-            let taget_lit_value = *solver_state.values.get((unit_idx - 1) as usize).unwrap();
-            solver_state.prop_head += 1;
-            for clause_idx in 0..clauses.len() {
-                let clause = clauses.get(clause_idx).unwrap();
-                if sat_clauses.contains(&clause_idx) {
-                    // clause already satisfied
-                    continue;
-                }
-
-                let mut clause_vars = clause.lits.len();
-
-                // for each literal in the clause
-                for literal in clause.lits.iter() {
-                    // if literal is the target literal
-                    if literal.var.0 == unit_idx as u32 {
-                        // check if it will satisfy the clause
-                        if literal.positive && taget_lit_value == Truth::True
-                            || !literal.positive && taget_lit_value == Truth::False
-                        {
-                            // clause will be statisfied
-                            sat_clauses.push(clause_idx);
-                            break;
-                        } else {
-                            clause_vars -= 1;
-                        }
-                    }
-                }
-
-                if clause_vars == 0 {
-                    // we have an empty clause
-                    solver_state.satisfied_clauses.push(sat_clauses);
-                    return false;
+        if let Some(level_clauses) = solver_state.satisfied_clauses.get(level as usize) {
+            for &ci in level_clauses {
+                if ci < is_sat.len() {
+                    is_sat[ci] = true;
                 }
             }
         }
-
-        find_units(&mut sat_clauses, clauses, solver_state);
     }
-    solver_state.satisfied_clauses.push(sat_clauses);
-    return true;
+
+    let mut changed = true;
+    while changed {
+        changed = false;
+
+        for (ci, clause) in clauses.iter().enumerate() {
+            if is_sat[ci] {
+                continue;
+            }
+
+            let mut has_true = false;
+            let mut undef_count = 0usize;
+            let mut last_undef = 0usize;
+
+            for (li, lit) in clause.lits.iter().enumerate() {
+                let v = solver_state.values[lit.var.0 as usize];
+                match v {
+                    Truth::Undef => {
+                        undef_count += 1;
+                        last_undef = li;
+                    }
+                    Truth::True if lit.positive => {
+                        has_true = true;
+                        break;
+                    }
+                    Truth::False if !lit.positive => {
+                        has_true = true;
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+
+            if has_true {
+                is_sat[ci] = true;
+                continue;
+            }
+
+            if undef_count == 0 {
+                // conflict: all literals are false
+                solver_state.satisfied_clauses.push(
+                    is_sat
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, &b)| if b { Some(i) } else { None })
+                        .collect(),
+                );
+                return false;
+            }
+
+            if undef_count == 1 {
+                // Unit clause
+                let lit = clause.lits[last_undef];
+                let slot = &mut solver_state.values[lit.var.0 as usize];
+                match *slot {
+                    Truth::Undef => {
+                        *slot = if lit.positive {
+                            Truth::True
+                        } else {
+                            Truth::False
+                        };
+                        solver_state.trail.push(Literal {
+                            var: lit.var,
+                            positive: lit.positive,
+                        });
+                        changed = true;
+                    }
+                    Truth::True | Truth::False => {
+                        let lit_is_true = (*slot == Truth::True && lit.positive)
+                            || (*slot == Truth::False && !lit.positive);
+                        if !lit_is_true {
+                            solver_state.satisfied_clauses.push(
+                                is_sat
+                                    .iter()
+                                    .enumerate()
+                                    .filter_map(|(i, &b)| if b { Some(i) } else { None })
+                                    .collect(),
+                            );
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let sat_indices: Vec<usize> = is_sat
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &b)| if b { Some(i) } else { None })
+        .collect();
+    solver_state.satisfied_clauses.push(sat_indices);
+    true
 }
 
 fn find_units(
-    sat_clauses: &mut Vec<usize>,
-    clauses: &Vec<Clause>,
-    mut solver_state: &mut SolverState,
-) {
-    for i in 0..clauses.len() {
-        if sat_clauses.contains(&i) {
-            // no need to check since it is statisfied
+    _sat_clauses: &mut [usize],
+    clauses: &[Clause],
+    solver_state: &mut SolverState,
+) -> bool {
+    for (ci, clause) in clauses.iter().enumerate() {
+        let mut has_true = false;
+        let mut undef_count = 0usize;
+        let mut last_undef = 0usize;
+
+        for (li, lit) in clause.lits.iter().enumerate() {
+            let v = solver_state.values[lit.var.0 as usize];
+            match v {
+                Truth::Undef => {
+                    undef_count += 1;
+                    last_undef = li;
+                }
+                Truth::True if lit.positive => {
+                    has_true = true;
+                    break;
+                }
+                Truth::False if !lit.positive => {
+                    has_true = true;
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        if has_true {
             continue;
         }
-        if clauses[i].lits.len() == 1 {
-            let literal = clauses[i].lits[0];
 
-            let truth_value = solver_state
-                .values
-                .get_mut((literal.var.0 - 1) as usize)
-                .unwrap();
-            *truth_value = if literal.positive {
-                solver_state.trail.push(Literal {
-                    var: literal.var,
-                    positive: true,
-                });
-                Truth::True
+        if clause.lits.len() == 1 || undef_count == 1 {
+            let lit = if clause.lits.len() == 1 {
+                clause.lits[0]
             } else {
-                solver_state.trail.push(Literal {
-                    var: literal.var,
-                    positive: false,
-                });
-                Truth::False
+                clause.lits[last_undef]
             };
+            let slot = &mut solver_state.values[lit.var.0 as usize];
+            match *slot {
+                Truth::Undef => {
+                    *slot = if lit.positive {
+                        Truth::True
+                    } else {
+                        Truth::False
+                    };
+                    solver_state.trail.push(Literal {
+                        var: lit.var,
+                        positive: lit.positive,
+                    });
+                }
+                Truth::True | Truth::False => {
+                    let lit_is_true = (*slot == Truth::True && lit.positive)
+                        || (*slot == Truth::False && !lit.positive);
+                    if !lit_is_true {
+                        return false; // conflict detected
+                    }
+                }
+            }
+        } else if undef_count == 0 {
+            return false; // empty clause ⇒ conflict
         }
     }
+    true
 }
 
-fn pure_literal_elimination(clauses: &Vec<Clause>, solver_state: &mut SolverState, level: u32) {
+fn pure_literal_elimination(clauses: &[Clause], solver_state: &mut SolverState, level: u32) {
     let sat_clauses = solver_state
         .satisfied_clauses
         .get_mut((level) as usize)
@@ -202,12 +280,7 @@ fn pure_literal_elimination(clauses: &Vec<Clause>, solver_state: &mut SolverStat
 
         // for each literal in the clause
         for literal in clause.lits.iter() {
-            if *solver_state
-                .values
-                .get((literal.var.0 - 1) as usize)
-                .unwrap()
-                == Truth::Undef
-            {
+            if *solver_state.values.get((literal.var.0) as usize).unwrap() == Truth::Undef {
                 if pure_lits.contains_key(&literal.var.0) {
                     let is_pure_so_far: bool = pure_lits.get(&literal.var.0).unwrap().0;
                     let has_same_sign: bool =
@@ -251,7 +324,7 @@ fn pure_literal_elimination(clauses: &Vec<Clause>, solver_state: &mut SolverStat
                 }
             }
 
-            *solver_state.values.get_mut((var_id - 1) as usize).unwrap() =
+            *solver_state.values.get_mut((var_id) as usize).unwrap() =
                 if value.1 { Truth::True } else { Truth::False }
         }
     }
@@ -262,29 +335,24 @@ fn choose_literal(
     solver_state: &mut SolverState,
     level: usize,
 ) -> Option<Literal> {
-    // go though the solverstate and find the first unknown literal
-    // find the first literal that is in a unstatisfied clause and propagate it
+    let sat = solver_state
+        .satisfied_clauses
+        .get(level)
+        .map(|v| v.as_slice())
+        .unwrap_or(&[]);
+
     for i in 0..clauses.len() {
-        if solver_state
-            .satisfied_clauses
-            .get(level)
-            .unwrap()
-            .contains(&i)
-        {
+        if sat.contains(&i) {
             continue;
         }
 
-        for lit in clauses.get(i).unwrap().lits.iter() {
+        for lit in &clauses[i].lits {
             println!(
                 "Lit id: {}, Value: {}",
                 lit.var.0,
-                solver_state
-                    .values
-                    .get((lit.var.0 - 1) as usize)
-                    .unwrap()
-                    .to_string()
+                solver_state.values[lit.var.0 as usize].to_string()
             );
-            if *solver_state.values.get((lit.var.0 - 1) as usize).unwrap() == Truth::Undef {
+            if solver_state.values[lit.var.0 as usize] == Truth::Undef {
                 return Some(Literal {
                     var: VariableId(lit.var.0),
                     positive: true,
@@ -292,10 +360,7 @@ fn choose_literal(
             }
         }
     }
-
-    // this should not ever reach here ...
-    // this means we have assigned all of the varibales but the problem is not solved...
-    return None;
+    None
 }
 
 fn undo_solve(solver_state: &mut SolverState, level: u32) {
@@ -303,10 +368,7 @@ fn undo_solve(solver_state: &mut SolverState, level: u32) {
     for i in start_idx..solver_state.trail.len() {
         // set the value back to unknown
         let lit = solver_state.trail.get(i).unwrap();
-        *solver_state
-            .values
-            .get_mut((lit.var.0 - 1) as usize)
-            .unwrap() = Truth::Undef;
+        *solver_state.values.get_mut((lit.var.0) as usize).unwrap() = Truth::Undef;
     }
 
     // need to remove the trail and reset the prop_head
@@ -321,4 +383,10 @@ fn undo_solve(solver_state: &mut SolverState, level: u32) {
         .remove(solver_state.trail_lim.len() - 1); // remove the trail lim
 
     solver_state.satisfied_clauses.remove(level as usize);
+}
+
+fn ensure_level_slot(solver_state: &mut SolverState, level: usize) {
+    if solver_state.satisfied_clauses.len() <= level {
+        solver_state.satisfied_clauses.resize(level + 1, Vec::new());
+    }
 }

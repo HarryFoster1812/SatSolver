@@ -21,9 +21,9 @@ fn main() -> io::Result<()> {
         for j in 0..clause.lits.len() {
             let lit = clause.lits.get(j).unwrap();
             if lit.positive {
-                print!("{} ", lit.var.0);
+                print!("{} ", lit.var.0 + 1);
             } else {
-                print!("~{} ", lit.var.0);
+                print!("~{} ", lit.var.0 + 1);
             }
         }
         println!();
