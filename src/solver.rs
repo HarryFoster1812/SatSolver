@@ -105,9 +105,12 @@ fn unit_propagation(clauses: &Vec<Clause>, mut solver_state: &mut SolverState, l
     while solver_state.prop_head < solver_state.trail.len() {
         // now the literals have been found we need to propagate them
         // for each unpropagated literal
-        for unit_idx in solver_state.prop_head..solver_state.trail.len() {
+        println!("Prop Head: {}", solver_state.prop_head);
+        for trail_idx in solver_state.prop_head..solver_state.trail.len() {
             // for each clause
-            let taget_lit_value = *solver_state.values.get(unit_idx).unwrap();
+
+            let unit_idx = solver_state.trail.get(trail_idx).unwrap().var.0;
+            let taget_lit_value = *solver_state.values.get((unit_idx - 1) as usize).unwrap();
             solver_state.prop_head += 1;
             for clause_idx in 0..clauses.len() {
                 let clause = clauses.get(clause_idx).unwrap();
@@ -116,21 +119,29 @@ fn unit_propagation(clauses: &Vec<Clause>, mut solver_state: &mut SolverState, l
                     continue;
                 }
 
+                let mut clause_vars = clause.lits.len();
+
                 // for each literal in the clause
                 for literal in clause.lits.iter() {
                     // if literal is the target literal
-                    if literal.var.0 == (unit_idx + 1) as u32 {
+                    if literal.var.0 == unit_idx as u32 {
                         // check if it will satisfy the clause
                         if literal.positive && taget_lit_value == Truth::True
                             || !literal.positive && taget_lit_value == Truth::False
                         {
                             // clause will be statisfied
                             sat_clauses.push(clause_idx);
+                            break;
                         } else {
-                            // there is a contradiction
-                            return false;
+                            clause_vars -= 1;
                         }
                     }
+                }
+
+                if clause_vars == 0 {
+                    // we have an empty clause
+                    solver_state.satisfied_clauses.push(sat_clauses);
+                    return false;
                 }
             }
         }
@@ -171,7 +182,6 @@ fn find_units(
                 });
                 Truth::False
             };
-            sat_clauses.push(i);
         }
     }
 }
@@ -289,7 +299,7 @@ fn choose_literal(
 }
 
 fn undo_solve(solver_state: &mut SolverState, level: u32) {
-    let start_idx = *solver_state.trail_lim.get(1).unwrap();
+    let start_idx = *solver_state.trail_lim.get(level as usize).unwrap();
     for i in start_idx..solver_state.trail.len() {
         // set the value back to unknown
         let lit = solver_state.trail.get(i).unwrap();
@@ -309,4 +319,6 @@ fn undo_solve(solver_state: &mut SolverState, level: u32) {
     solver_state
         .trail_lim
         .remove(solver_state.trail_lim.len() - 1); // remove the trail lim
+
+    solver_state.satisfied_clauses.remove(level as usize);
 }
