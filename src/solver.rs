@@ -52,13 +52,13 @@ pub fn solve(problem: &Problem, solver_state: &mut SolverState) -> SolverResult 
 }
 
 pub fn DPLL(problem: &Problem, solver_state: &mut SolverState, level: u32) -> bool {
-    solver_state.trail_lim.push(solver_state.prop_head);
+    solver_state.trail_lim.push(solver_state.trail.len());
+    ensure_level_slot(solver_state, level as usize);
     if !unit_propagation(&problem.clauses, solver_state, level) {
         // there was a contradiction so we return false
         return false;
     }
 
-    ensure_level_slot(solver_state, level as usize);
     pure_literal_elimination(&problem.clauses, solver_state, level);
 
     if solver_state
@@ -142,13 +142,6 @@ fn unit_propagation(clauses: &Vec<Clause>, solver_state: &mut SolverState, level
 
             if undef_count == 0 {
                 // conflict: all literals are false
-                solver_state.satisfied_clauses.push(
-                    is_sat
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(i, &b)| if b { Some(i) } else { None })
-                        .collect(),
-                );
                 return false;
             }
 
@@ -173,13 +166,6 @@ fn unit_propagation(clauses: &Vec<Clause>, solver_state: &mut SolverState, level
                         let lit_is_true = (*slot == Truth::True && lit.positive)
                             || (*slot == Truth::False && !lit.positive);
                         if !lit_is_true {
-                            solver_state.satisfied_clauses.push(
-                                is_sat
-                                    .iter()
-                                    .enumerate()
-                                    .filter_map(|(i, &b)| if b { Some(i) } else { None })
-                                    .collect(),
-                            );
                             return false;
                         }
                     }
@@ -193,74 +179,7 @@ fn unit_propagation(clauses: &Vec<Clause>, solver_state: &mut SolverState, level
         .enumerate()
         .filter_map(|(i, &b)| if b { Some(i) } else { None })
         .collect();
-    solver_state.satisfied_clauses.push(sat_indices);
-    true
-}
-
-fn find_units(
-    _sat_clauses: &mut [usize],
-    clauses: &[Clause],
-    solver_state: &mut SolverState,
-) -> bool {
-    for (ci, clause) in clauses.iter().enumerate() {
-        let mut has_true = false;
-        let mut undef_count = 0usize;
-        let mut last_undef = 0usize;
-
-        for (li, lit) in clause.lits.iter().enumerate() {
-            let v = solver_state.values[lit.var.0 as usize];
-            match v {
-                Truth::Undef => {
-                    undef_count += 1;
-                    last_undef = li;
-                }
-                Truth::True if lit.positive => {
-                    has_true = true;
-                    break;
-                }
-                Truth::False if !lit.positive => {
-                    has_true = true;
-                    break;
-                }
-                _ => {}
-            }
-        }
-
-        if has_true {
-            continue;
-        }
-
-        if clause.lits.len() == 1 || undef_count == 1 {
-            let lit = if clause.lits.len() == 1 {
-                clause.lits[0]
-            } else {
-                clause.lits[last_undef]
-            };
-            let slot = &mut solver_state.values[lit.var.0 as usize];
-            match *slot {
-                Truth::Undef => {
-                    *slot = if lit.positive {
-                        Truth::True
-                    } else {
-                        Truth::False
-                    };
-                    solver_state.trail.push(Literal {
-                        var: lit.var,
-                        positive: lit.positive,
-                    });
-                }
-                Truth::True | Truth::False => {
-                    let lit_is_true = (*slot == Truth::True && lit.positive)
-                        || (*slot == Truth::False && !lit.positive);
-                    if !lit_is_true {
-                        return false; // conflict detected
-                    }
-                }
-            }
-        } else if undef_count == 0 {
-            return false; // empty clause ⇒ conflict
-        }
-    }
+    solver_state.satisfied_clauses[level as usize] = sat_indices;
     true
 }
 
