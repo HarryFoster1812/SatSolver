@@ -222,6 +222,25 @@ fn pure_literal_elimination(clauses: &Vec<Clause>, solver_state: &mut SolverStat
                 positive: value.1,
             });
 
+            // update clauses to remove the ones that the literal statisfies
+
+            for clause_idx in 0..clauses.len() {
+                let clause = clauses.get(clause_idx).unwrap();
+                if sat_clauses.contains(&clause_idx) {
+                    // clause already satisfied
+                    continue;
+                }
+
+                // for each literal in the clause
+                for literal in clause.lits.iter() {
+                    // if literal is the target literal
+                    if literal.var.0 == var_id {
+                        sat_clauses.push(clause_idx);
+                        break;
+                    }
+                }
+            }
+
             *solver_state.values.get_mut((var_id - 1) as usize).unwrap() =
                 if value.1 { Truth::True } else { Truth::False }
         }
@@ -246,6 +265,15 @@ fn choose_literal(
         }
 
         for lit in clauses.get(i).unwrap().lits.iter() {
+            println!(
+                "Lit id: {}, Value: {}",
+                lit.var.0,
+                solver_state
+                    .values
+                    .get((lit.var.0 - 1) as usize)
+                    .unwrap()
+                    .to_string()
+            );
             if *solver_state.values.get((lit.var.0 - 1) as usize).unwrap() == Truth::Undef {
                 return Some(Literal {
                     var: VariableId(lit.var.0),
