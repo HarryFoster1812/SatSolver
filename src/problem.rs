@@ -24,6 +24,16 @@ pub enum Truth {
     Undef,
 }
 
+impl Truth {
+    pub fn to_string(self) -> &'static str {
+        match self {
+            Truth::True => "True",
+            Truth::False => "False",
+            Truth::Undef => "Undefined",
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Clause {
     pub lits: Box<[Literal]>, // fixed after construction
