@@ -1,4 +1,4 @@
-use std::{collections::HashMap, iter};
+use std::{collections::HashMap, iter, ops::Not};
 
 use crate::{problem::*, solver};
 
@@ -28,12 +28,10 @@ pub struct SolverResult {
 pub struct SolverState {
     // Per-variable assignment
     pub values: Vec<Truth>,
-    pub decision_level: Vec<u32>,
 
     // Decision stack / undo log
     pub trail: Vec<Literal>,
     pub trail_lim: Vec<usize>,
-    pub prop_head: usize,
 
     pub satisfied_clauses: Vec<Vec<usize>>, // satisfied_clause_indices
 }
@@ -52,8 +50,12 @@ pub fn solve(problem: &Problem, solver_state: &mut SolverState) -> SolverResult 
 }
 
 pub fn DPLL(problem: &Problem, solver_state: &mut SolverState, level: u32) -> bool {
-    solver_state.trail_lim.push(solver_state.trail.len());
+    solver_state.trail_lim.push(solver_state.trail.len()); // the current head of all of the
+    // decisions
+
+    // make sure that there is a slot for the sat_clauses
     ensure_level_slot(solver_state, level as usize);
+
     if !unit_propagation(&problem.clauses, solver_state, level) {
         // there was a contradiction so we return false
         return false;
@@ -61,6 +63,7 @@ pub fn DPLL(problem: &Problem, solver_state: &mut SolverState, level: u32) -> bo
 
     pure_literal_elimination(&problem.clauses, solver_state, level);
 
+    // check if all clauses are satisfied
     if solver_state
         .satisfied_clauses
         .get(level as usize)
@@ -73,19 +76,31 @@ pub fn DPLL(problem: &Problem, solver_state: &mut SolverState, level: u32) -> bo
 
     let l = choose_literal(&problem.clauses, solver_state, level as usize).unwrap();
 
+    // println!("Level:{}\n{:?}", level, solver_state);
     *solver_state.values.get_mut((l.var.0) as usize).unwrap() = Truth::True;
     solver_state.trail.push(l);
 
+    // println!("CHOSE LITERAL: {}", l.var.0);
+    // println!();
     return if DPLL(problem, solver_state, level + 1) {
         true
     } else {
+        // println!("LITERAL ID {} CAUSED CONTRADICTION", l.var.0);
+        // println!("UNDOING ON LEVEL: {}", level);
         undo_solve(solver_state, level + 1);
+
         *solver_state.values.get_mut((l.var.0) as usize).unwrap() = Truth::False;
 
-        solver_state.trail.push(Literal {
-            var: l.var,
-            positive: !l.positive,
-        });
+        solver_state
+            .trail
+            .last_mut()
+            .expect("Last literal not found")
+            .positive
+            .not();
+
+        // println!("AFTER UNDO");
+        // println!("{:?}", solver_state);
+
         DPLL(problem, solver_state, level + 1)
     };
 }
@@ -179,6 +194,9 @@ fn unit_propagation(clauses: &Vec<Clause>, solver_state: &mut SolverState, level
         .enumerate()
         .filter_map(|(i, &b)| if b { Some(i) } else { None })
         .collect();
+
+    // println!("UNIT PROP FINISHED: {:?}", sat_indices);
+
     solver_state.satisfied_clauses[level as usize] = sat_indices;
     true
 }
@@ -266,11 +284,6 @@ fn choose_literal(
         }
 
         for lit in &clauses[i].lits {
-            println!(
-                "Lit id: {}, Value: {}",
-                lit.var.0,
-                solver_state.values[lit.var.0 as usize].to_string()
-            );
             if solver_state.values[lit.var.0 as usize] == Truth::Undef {
                 return Some(Literal {
                     var: VariableId(lit.var.0),
@@ -295,13 +308,13 @@ fn undo_solve(solver_state: &mut SolverState, level: u32) {
         .trail
         .drain(start_idx..solver_state.trail.len());
 
-    solver_state.prop_head = solver_state.trail.len();
-
     solver_state
         .trail_lim
-        .remove(solver_state.trail_lim.len() - 1); // remove the trail lim
+        .drain(level as usize..solver_state.satisfied_clauses.len());
 
-    solver_state.satisfied_clauses.remove(level as usize);
+    solver_state
+        .satisfied_clauses
+        .drain(level as usize..solver_state.satisfied_clauses.len());
 }
 
 fn ensure_level_slot(solver_state: &mut SolverState, level: usize) {
