@@ -8,7 +8,7 @@ use std::io;
 
 fn main() -> io::Result<()> {
     // parse the file into the problem struct
-    let PROBLEM: Problem = problem::parse_stdin()?;
+    let mut PROBLEM: Problem = problem::parse_stdin()?;
 
     // println!(
     //     "File Parsed. NumVars: {}. NumClauses: {}.",
@@ -36,7 +36,7 @@ fn main() -> io::Result<()> {
         satisfied_clauses: Vec::new(),
     };
 
-    let solver_result: SolverResult = solve(&PROBLEM, &mut solver_state);
+    let solver_result: SolverResult = solve(&mut PROBLEM, &mut solver_state);
 
     println!("{}", solver_result.status.to_string());
 
