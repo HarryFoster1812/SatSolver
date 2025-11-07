@@ -91,12 +91,12 @@ pub fn DPLL(problem: &Problem, solver_state: &mut SolverState, level: u32) -> bo
 
         *solver_state.values.get_mut((l.var.0) as usize).unwrap() = Truth::False;
 
-        solver_state
+        let literal = solver_state
             .trail
             .last_mut()
-            .expect("Last literal not found")
-            .positive
-            .not();
+            .expect("Last literal not found");
+
+        literal.positive = literal.positive.not();
 
         // println!("AFTER UNDO");
         // println!("{:?}", solver_state);
