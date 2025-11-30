@@ -6,6 +6,15 @@ This project was created as a university challenge for fun and learning purposes
 
 ---
 
+## Competition
+
+Solver Name: Clause for Alarm
+Author Name: Harry Foster
+
+I agree for my solver and name to be included in the evaluation table put on Canvas course page.  
+
+---
+
 ## Features
 
 * Parses **DIMACS CNF** format from standard input.
